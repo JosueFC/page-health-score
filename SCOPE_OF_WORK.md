@@ -216,6 +216,18 @@ Tracked here so nothing gets silently treated as permanent:
   Conservative default, chosen for simplicity and consistency with the
   "deliberate site-owner signal" reasoning in §3. May warrant per-user-agent
   parsing later if real pages show this to be too blunt.
+- **Content Structure's internal 4/4/4/4/4 split** (§3, Day 2) — title / H1 /
+  heading hierarchy / body copy / lists-tables-FAQ each weighted equally as
+  a starting point, same status as Crawlability's 10/6/4 split had before
+  being confirmed: not yet stress-tested against real pages, may warrant
+  reweighting.
+- **Body copy sufficiency reuses `MIN_VISIBLE_TEXT_WORDS`** (§3/§4, Day 2) —
+  Content Structure's body-copy-sufficiency signal intentionally shares the
+  same constant as the `low_visible_text_word_count` confidence detector,
+  rather than using a separate scoring threshold. Accepted as intentional
+  redundancy for v1 (a thin page fails both checks, seen from two angles) —
+  revisit if real-world use shows the two "thin" concepts (distrust-the-fetch
+  vs. bad-content) need to diverge.
 
 ## 11. Integration trigger
 
