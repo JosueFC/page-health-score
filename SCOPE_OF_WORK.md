@@ -228,6 +228,30 @@ Tracked here so nothing gets silently treated as permanent:
   redundancy for v1 (a thin page fails both checks, seen from two angles) —
   revisit if real-world use shows the two "thin" concepts (distrust-the-fetch
   vs. bad-content) need to diverge.
+- **Structured Data's "any block parses" scoring** (§3, Day 3) — a page with
+  one broken JSON-LD block among several valid ones scores full parsing
+  points, not zero (more forgiving than the harsh-treatment precedent used
+  elsewhere in this scope). Broken-block count and per-block error detail
+  are still captured unconditionally in raw diagnostics regardless of score,
+  so a future ranked-fix-list (§8) can surface it as its own fix item. May
+  warrant revisiting toward "all must parse" if real pages show broken
+  blocks going unnoticed too easily under this rule.
+- **`Article` treated as a specific type** (§3, Day 3) — not included in
+  Structured Data's generic-type denylist alongside `Thing`/`WebPage`/
+  `WebSite`/`CreativeWork`. Chosen because schema.org doesn't deprecate
+  plain `Article`, and a false negative (dinging a legitimately-typed page)
+  was judged worse than a false positive here. Revisit if this proves too
+  permissive in practice.
+- **`REQUIRED_PROPERTIES` type coverage is a small, hardcoded, growing map**
+  (§3, Day 3) — currently covers Organization, LocalBusiness, Product,
+  Article/BlogPosting/NewsArticle, BreadcrumbList, FAQPage only. A specific
+  but unrecognized `@type` (e.g. `Recipe`) is NOT scored 0 or 4 for required
+  properties — it's excluded from the denominator entirely, and that page's
+  Structured Data max_points drops from 15 to 11 (`unchecked_unknown_type`
+  status). This trades score comparability across pages for not silently
+  guessing or penalizing pages for the tool's own coverage gaps. Revisit as
+  the type map grows — and note score.py (Day 5) will need to handle a
+  variable per-page max_points for this component, not assume 15.
 
 ## 11. Integration trigger
 
