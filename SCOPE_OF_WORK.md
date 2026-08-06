@@ -283,6 +283,57 @@ Tracked here so nothing gets silently treated as permanent:
   always-report-the-diagnostic pattern used for Structured Data's
   broken-JSON-LD-block count. `score.py` (Day 5) must read `max_points`
   per-result for this component too, same as Structured Data's.
+- **Search Evidence's internal 5/5/5 split** (§3, Day 5) — impressions / CTR
+  / query diversity each weighted equally as a starting point, same
+  not-yet-stress-tested status as every other cross-component weighting.
+- **GSC-unavailable handling rescales the ENTIRE 15-point component to
+  0/0** (§3/§4, Day 5, Decision A) — stronger version of Technical
+  Quality's PSI-unavailable rescale: no GSC credentials, no site URL
+  configured, auth failure, or an API failure all mean "no channel to
+  measure this page's search traction at all," not "measured and it's
+  poor." Per §11, this is the DEFAULT state for every page scored before
+  WeekLift integration exists — not a rare edge case for this component,
+  the common case for the tool's entire pre-integration life so far.
+- **CTR and query diversity are gated by the impressions signal itself, not
+  a separately-invented threshold** (§3, Day 5, Decision B) — reuses the
+  same cascade pattern as Structured Data (§3, Day 3): a page below the
+  impressions threshold has too little traffic for CTR/diversity to mean
+  anything (e.g. 100% CTR on one impression is noise), so failing
+  Impressions gates both to zero. One number doing double duty rather than
+  two thresholds to separately justify and tune. Raw CTR/query-count are
+  still reported in diagnostics even when gated to zero, so a reader can
+  see e.g. "99% CTR on 3 impressions" for what it actually is.
+- **Search Evidence's three thresholds** (§3, Day 5) —
+  `IMPRESSIONS_THRESHOLD = 100`, `CTR_THRESHOLD = 0.02` (2%),
+  `QUERY_DIVERSITY_THRESHOLD = 5`, all over the 90-day trailing window.
+  Unresearched starting points, same status as `MIN_VISIBLE_TEXT_WORDS` and
+  `MIN_INTERNAL_LINKS`, explicitly pending recalibration against real
+  customer data.
+- **GSC trailing window: 90 days** (§3/§5, Day 5) — matches WeekLift's own
+  striking-distance design precedent for reducing short-term noise in
+  position/traffic signals, rather than an unstated or arbitrarily
+  different number.
+- **Headline score is always projected onto 0–100, never shown as a raw
+  variable-denominator fraction** (§1/§4/§8, Day 5, Decision C) — this
+  applies on every page, not only when a component rescales out: the
+  reserved 10-point buffer (§2) is permanently unbuilt in v1, so the
+  achievable max is at most 90 out of the SoW's own nominal 100, always.
+  `score = round(achieved_points / achievable_max_points * 100)`. Trade-off
+  accepted explicitly: projection is a small claim of equivalence (treating
+  excluded points as if they'd have scored average, which isn't strictly
+  established) in exchange for keeping §1's "0-100 score" framing literally
+  true for every page — including the majority of pages that will lack GSC
+  access throughout this project's entire pre-integration life. The raw
+  achieved/achievable numbers are still carried in full in
+  `PageScoreResult` for anyone who wants the unprojected picture.
+- **GSC service-account auth is the correct model here, not just a
+  consistent one** (§9, Day 5) — Search Console natively supports adding a
+  service account as a property collaborator, which is simpler and more
+  appropriate for a single-operator local CLI than replicating WeekLift's
+  own per-customer OAuth refresh-token flow. That per-customer OAuth need is
+  a genuine, separate gap for WeekLift's eventual integration (§11) —
+  `gsc_client.py` deliberately does not anticipate it now; noted here so it
+  isn't silently assumed away later.
 
 ## 11. Integration trigger
 
@@ -291,6 +342,17 @@ itself — scope, whether it becomes part of the weekly digest vs. a separate
 on-demand dashboard action, how Search Evidence reuses `gsc_client.py`'s
 page-analytics shape — is explicitly **not scoped here** and will get its own
 Scope of Work when that milestone arrives, not decided speculatively now.
+
+**Known gap, noted so it isn't silently assumed away (Day 5):**
+`gsc_client.py`'s v1 auth model is a single operator-owned GSC service
+account, added as a property collaborator — the correct model for a
+single-operator local CLI (§9), not a simplified stand-in for something
+else. WeekLift's eventual integration will need per-customer GSC access
+(each customer's own property, their own OAuth), which is a different auth
+model entirely — closer to WeekLift's existing per-customer OAuth
+refresh-token flow than to anything `gsc_client.py` does today. Whoever
+picks up this integration will need to design that, not extend the v1
+service-account approach.
 
 ## 12. Definition of done for v1
 
