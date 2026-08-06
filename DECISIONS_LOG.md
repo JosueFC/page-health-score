@@ -216,9 +216,82 @@ separate unverifiable signals.
 
 ---
 
+## Day 5 — Search Evidence
+
+### 16. GSC-unavailable handling rescales the entire component (Decision A)
+**Confirmed.** Applied the same test used for PSI: is this a genuine
+epistemic gap, or confirmed bad news? No GSC access isn't "we measured this
+page's search traction and it's poor" — it's "we have no channel to measure
+it at all." Categorically the Unscored-at-component-granularity case, same
+mechanism as Technical Quality's PSI rescale (decision #15), with an even
+cleaner trigger: a missing credential file is unambiguous, unlike a PSI 429
+which could be a transient blip or a real problem.
+
+The more important part of this decision wasn't the mechanism, it was
+noticing the consequence: per §11, GSC access is deferred until WeekLift has
+paying users, meaning "no GSC data" won't be a rare edge case for this
+component — it'll be the default state for every page scored during this
+entire pre-integration phase of the project's life. That reframed the real
+question from "how do we handle this one component's edge case" to "what
+does the tool's headline 0–100 score mean in practice, for the period before
+integration exists" — which is decision #18 below.
+
+### 17. CTR and query diversity are gated by impressions itself, not a new threshold (Decision B)
+**Confirmed.** The proposal's framing — "independent gates" vs. "an
+impressions floor" — was a false choice. Signal 1 (Impressions) already is
+the floor needed: reuse its own threshold as the prerequisite for CTR and
+query diversity, rather than inventing a second number to separately
+justify and tune. This is exactly Structured Data's cascade pattern
+(JSON-LD-present gates parsing gates type-specificity gates
+required-properties, decision #7) applied here. A page failing the
+impressions threshold has, by definition, too little traffic for CTR or
+diversity to mean anything — a 100% CTR on one impression is noise, not
+signal. Raw CTR%/distinct-query-count are still reported in diagnostics
+regardless of gate outcome, same always-report-the-number principle used
+for Structured Data's broken-JSON-LD-block count (decision #8).
+
+Two gaps flagged during this decision that the original proposal hadn't
+addressed:
+- **Trailing window** was left unspecified in the proposal. Resolved to 90
+  days, matching WeekLift's own striking-distance design, which already
+  established that convention for reducing short-term noise in
+  position/traffic signals — a real precedent, not an arbitrary pick.
+- **Credential approach** — confirmed as originally proposed (a GSC service
+  account read from `GSC_CREDENTIALS_PATH`), but for a more specific reason
+  than "mirrors `PAGESPEED_API_KEY`": Search Console natively supports
+  adding a service account as a property collaborator, which is actually
+  the correct auth model for a single-operator local CLI, not just a
+  consistent-looking simplification. Noted as a backlog gap (§11, not
+  resolved now): WeekLift's eventual integration will need per-customer GSC
+  OAuth, a different model this client doesn't attempt to anticipate.
+
+### 18. Headline score is always projected onto 0–100 (Decision C)
+**Confirmed.** Two options were on the table: display a raw
+variable-denominator fraction (e.g. `"72/85"`, fully honest about what was
+and wasn't measured) or project onto 0–100 (e.g. `72/85 → 85`, preserving
+§1's "a deterministic, rules-based 0–100 score" framing literally, at the
+cost of implying the excluded points would have scored average — a small
+claim of equivalence that isn't strictly established).
+
+Chose projection. The decisive point: this isn't only about Search
+Evidence's rescale. The reserved 10-point buffer (§2) is *permanently*
+unbuilt and unscored in v1 — so the achievable max is at most 90 out of the
+nominal 100 on every single page, always, independent of any component
+rescaling. Projection is therefore the standard path, not a special case
+invoked only when something goes wrong. `score = round(achieved_points /
+achievable_max_points * 100)`, computed once in `score.py` rather than
+per-component, since it's one architectural decision that three components'
+rescales (Structured Data, Technical Quality, Search Evidence) all silently
+depended on without anyone having pinned it down. The raw achieved/
+achievable numbers are still carried in full in `PageScoreResult.
+achieved_points` / `achievable_max_points` for anyone who wants the
+unprojected picture — projection changes what's *displayed* as the headline
+number, not what's *recorded*.
+
+---
+
 ## Still open / explicitly deferred
 
-Nothing currently open — all decisions through Day 4, including the
-follow-up correction to decision #15, have been signed off. Day 5 (Search
-Evidence) will add its own entries here as its scoring rules are proposed
-and confirmed.
+Nothing currently open — all decisions through Day 5 have been signed off.
+This is the last component per §7's build order; remaining work is §12's
+definition-of-done pass (Day 6 in BUILD_ROADMAP.md).
