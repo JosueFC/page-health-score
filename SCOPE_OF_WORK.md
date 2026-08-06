@@ -252,6 +252,30 @@ Tracked here so nothing gets silently treated as permanent:
   guessing or penalizing pages for the tool's own coverage gaps. Revisit as
   the type map grows — and note score.py (Day 5) will need to handle a
   variable per-page max_points for this component, not assume 15.
+- **Technical Quality's internal 5/5/5/5 split** (§3, Day 4) — PSI SEO / PSI
+  performance / alt coverage / internal linking each weighted equally as a
+  starting point, same not-yet-stress-tested status as every other
+  cross-component weighting so far.
+- **PSI score gates are binary at 90** (§3, Day 4) — not a three-tier gate.
+  Chosen as the cleaner read of "floor/gate, not graded" (§3); a page at 89
+  and a page at 12 currently score identically (0/5). Revisit toward a
+  three-tier gate if binary proves too unforgiving for pages clustered just
+  below the threshold once real pages are scored.
+- **Internal-linking threshold: `MIN_INTERNAL_LINKS = 3`** (§3, Day 4) —
+  picked as a low, unresearched bar (avoid false-failing legitimate
+  single-CTA landing pages), explicitly flagged for later recalibration
+  once real customer pages are available, same status as
+  `MIN_VISIBLE_TEXT_WORDS`.
+- **PSI-unavailable handling scores 0, not a rescale ceiling** (§3/§4,
+  Day 4) — flagged during build, not explicitly part of the four Day 4
+  sign-off questions. If `pagespeed_result.error` is set (PSI request
+  failed entirely — bad key, quota exhausted, outage), both PSI-derived
+  signals score 0 rather than being excluded from the denominator the way
+  Structured Data's unknown-type case is. Chosen for consistency with this
+  scope's general "unverifiable is treated at least as harshly as a real
+  failure" pattern, but this specific case wasn't put to an explicit
+  sign-off the way the other four Day 4 decisions were — worth a deliberate
+  look rather than treating it as settled.
 
 ## 11. Integration trigger
 

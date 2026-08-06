@@ -120,8 +120,72 @@ constant 15 when combining sub-scores.
 
 ---
 
+## Day 4 — Technical Quality
+
+### 11. PSI SEO / performance gates: binary at 90, not three-tier
+**Tunable** (§10). Considered a three-tier gate (≥90 full, 50–89 half
+credit, <50 zero) as a softer alternative to a hard cliff at the threshold.
+Chose binary: cleaner read of §3's "floor/gate, not graded" framing (a gate
+is one line, not two), and consistent with the binary precedent already set
+by H1, canonical, and most other signals in this scope. A page at 89 and a
+page at 12 currently score identically (0/5) — flagged as the known
+trade-off, revisit if this proves too unforgiving once real pages are
+scored.
+
+### 12. Zero images passes the alt-coverage signal outright
+**Confirmed** (mechanism), **Tunable** (whether "pass" is the right default
+— folded into §10's Technical Quality entries). Considered scoring zero
+images as a rescale-ceiling case (same pattern as Structured Data's
+unknown-type handling) vs. a straight pass. Chose pass: avoids taking on the
+variable-max_points complexity a second time in one component, and a page
+with no images genuinely has no alt-text problem to demonstrate. Trade-off
+accepted: a content-light page can score identically here to a page with
+many well-alt'd images.
+
+### 13. Internal-linking threshold: 3
+**Tunable** (§10). No real trade-off between options here — just a pick-a-
+number-and-move-on call, explicitly acknowledged as unresearched and
+revisit-later once real customer pages can validate it (same treatment as
+`MIN_VISIBLE_TEXT_WORDS`). Low bar chosen deliberately to avoid false-
+failing legitimate single-CTA landing pages.
+
+### 14. Rate-limit handling: throttle + retry-exactly-once on 429 (option B)
+**Confirmed.** Chose option B (self-throttle plus a single retry on 429)
+over A (throttle only, no retry) and C (throttle plus result caching). B
+matches §12's actual use case — a single PSI call per CLI run — better than
+A's no-safety-net approach, without taking on C's real cost: a persistence
+and cache-invalidation layer this project explicitly doesn't need yet per
+§9. Retry count is capped at exactly one (`DEFAULT_MAX_ATTEMPTS = 2`,
+mirroring weeklift's `resend_client.py` convention) rather than left as an
+open "one or two," so the retry philosophy already matches that codebase's
+if this project is ever folded back toward it. The final failure always
+surfaces PSI's actual status code and response detail rather than a
+generic "gave up after retries" message, specifically to avoid the
+retry-masking-a-real-problem risk that was flagged when comparing options.
+All retry/backoff/throttle logic lives entirely inside
+`pagespeed_client.py` — restated as a structural boundary check, matching
+the I/O-isolation contract every component has held to so far.
+
+### 15. PSI-unavailable handling scores 0, not a rescale ceiling
+**Flagged, not explicitly signed off** — surfaced during build, not one of
+the four questions put to Day 4 sign-off. If a PSI request fails entirely
+(bad key, quota exhausted, outage — `pagespeed_result.error` is set), both
+PSI-derived signals currently score 0 rather than being excluded from the
+denominator the way Structured Data's unknown-type case is. Implemented
+this way for consistency with the scope's general "unverifiable is treated
+at least as harshly as a real failure" pattern, but this specific call
+wasn't put to an explicit choice the way decisions 11–14 were. Worth a
+deliberate look before Day 5, since it's the same shape of question as
+decision #10 (Structured Data's unknown-type handling) but was answered the
+opposite way without discussion.
+
+---
+
 ## Still open / explicitly deferred
 
-Nothing currently open — all decisions proposed through Day 3 have been
-signed off. Day 4 (Technical Quality) and Day 5 (Search Evidence) will add
-entries here as their scoring rules are proposed and confirmed.
+- **Decision #15 above** (PSI-unavailable handling) — implemented as a
+  reasonable default during Day 4 build, but not yet explicitly confirmed
+  the way every other decision in this log has been.
+
+Day 5 (Search Evidence) will add its own entries here as its scoring rules
+are proposed and confirmed.
