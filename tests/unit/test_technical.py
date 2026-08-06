@@ -68,10 +68,18 @@ def test_raw_psi_scores_always_included_in_output():
     assert result.psi_performance_score == 30
 
 
-def test_psi_unavailable_scores_zero_for_both_psi_gates():
-    """Flagged design note: PSI failure is treated harshly (0), not
-    excluded from the denominator -- see technical.py's module docstring."""
-    psi = make_psi_result(seo=None, performance=None, error="PageSpeed Insights returned HTTP 403: bad key", status_code=403)
+def test_psi_unavailable_rescales_the_psi_block_out_of_the_denominator():
+    """Decision #15 (confirmed): PSI failure rescales the 10-point PSI
+    block out of the denominator entirely, rather than scoring 0 for it --
+    framed as PSI-scoped Unscored (§4), not a repeat of Structured Data's
+    unknown-type pattern. Scoring 0 would assert a fact ("fails PSI's
+    quality bar") that was never established."""
+    psi = make_psi_result(
+        seo=None,
+        performance=None,
+        error="PageSpeed Insights returned HTTP 403: bad key",
+        status_code=403,
+    )
     result = score(page(""), psi=psi)
     assert result.psi_available is False
     assert result.psi_error is not None
@@ -79,6 +87,25 @@ def test_psi_unavailable_scores_zero_for_both_psi_gates():
     assert result.psi_performance_points == 0
     assert result.psi_seo_score is None
     assert result.psi_performance_score is None
+    assert result.max_points == 10  # PSI's 10-point block excluded, not counted against the page
+
+
+def test_psi_unavailable_with_otherwise_perfect_page_scores_perfect_within_reduced_ceiling():
+    """A page that aces everything PSI-independent should score full marks
+    within its own (rescaled) ceiling, not be capped below 100% just
+    because PSI specifically was unreachable."""
+    body = '<img src="a.jpg" alt="d"><a href="/a">a</a><a href="/b">b</a><a href="/c">c</a>'
+    psi = make_psi_result(seo=None, performance=None, error="PSI outage", status_code=500)
+    result = score(page(body), psi=psi)
+    assert result.max_points == 10
+    assert result.points == 10  # alt (5) + internal linking (5), PSI excluded entirely
+
+
+def test_psi_error_string_always_carried_even_though_it_does_not_affect_score():
+    psi = make_psi_result(seo=None, performance=None, error="PageSpeed Insights returned HTTP 500: outage detail", status_code=500)
+    result = score(page(""), psi=psi)
+    assert "500" in result.psi_error
+    assert "outage detail" in result.psi_error
 
 
 # --- image alt coverage ---------------------------------------------------
