@@ -166,26 +166,59 @@ All retry/backoff/throttle logic lives entirely inside
 `pagespeed_client.py` — restated as a structural boundary check, matching
 the I/O-isolation contract every component has held to so far.
 
-### 15. PSI-unavailable handling scores 0, not a rescale ceiling
-**Flagged, not explicitly signed off** — surfaced during build, not one of
-the four questions put to Day 4 sign-off. If a PSI request fails entirely
-(bad key, quota exhausted, outage — `pagespeed_result.error` is set), both
-PSI-derived signals currently score 0 rather than being excluded from the
-denominator the way Structured Data's unknown-type case is. Implemented
-this way for consistency with the scope's general "unverifiable is treated
-at least as harshly as a real failure" pattern, but this specific call
-wasn't put to an explicit choice the way decisions 11–14 were. Worth a
-deliberate look before Day 5, since it's the same shape of question as
-decision #10 (Structured Data's unknown-type handling) but was answered the
-opposite way without discussion.
+### 15. PSI-unavailable handling rescales the PSI block out of the denominator
+**Confirmed** (revised after initial build — see below). Originally
+implemented as "score 0, same as a real failure," flagged explicitly as not
+signed off. On review, reversed to rescale: the two PSI-derived signals are
+excluded from Technical Quality's denominator as a single 10-point block,
+`max_points` drops from 20 to 10 for that page, and alt coverage / internal
+linking (which don't depend on PSI) are unaffected.
+
+The reasoning for landing here, distinct from both prior precedents this
+could have followed:
+
+- **Not the same as zero-images (decision #12).** Zero images is complete
+  information and genuinely good news — no epistemic gap, so rescaling
+  would manufacture uncertainty that doesn't exist. A PSI failure is the
+  opposite: a real, total gap. The tool doesn't know whether the page would
+  have scored 95 or 12 on PSI — the check simply never ran. Scoring 0 would
+  assert a fact ("this page fails PSI's quality bar") that was never
+  established — exactly the overclaim §2/§4 already rule out.
+- **A cleaner case than Structured Data's unknown-type (decision #10), not
+  just the same pattern reapplied.** Unknown-type is a *permanent,
+  structural* gap — the tool will never recognize every schema.org type, so
+  "unverifiable" is baked into the tool's design. A PSI outage or bad key is
+  a *transient, external* failure — closer in spirit to `fetch.py`'s own
+  Unscored tier (§4) than to a coverage limitation. It's the same underlying
+  mechanism (§4's "no HTTP response at all... nothing downstream can be
+  evaluated honestly") applied at component granularity instead of page
+  granularity: the whole-page fetch either succeeds or the page is Unscored
+  entirely; here, everything except the PSI-dependent half of one component
+  can still be computed fine.
+- **One asymmetry noted but not acted on:** unknown-type is *always*
+  tool-side. A PSI failure is *usually* tool/environment-side (bad key,
+  quota, transient outage) but not always — PSI can genuinely fail to
+  analyze a specific page (timeout, page too heavy, its own crawler
+  blocked). In that narrow case "unable to verify" is weaker evidence of a
+  real problem than a bad-key failure. This doesn't change the scoring
+  mechanism (still rescale, never guess a number either direction) — but it
+  is why the raw PSI error string must always be carried in output
+  regardless of score: a reader can tell "our API key was wrong" apart from
+  "PSI choked on this specific page," even though both currently get
+  identical score treatment. This connects directly to decision #14's
+  "loud, specific final failure" requirement on the retry design — that
+  requirement is what makes rescaling here trustworthy rather than a black
+  box.
+
+Both PSI signals rescale together as one block, not independently — they
+come from a single API call, so a failure there is one event, not two
+separate unverifiable signals.
 
 ---
 
 ## Still open / explicitly deferred
 
-- **Decision #15 above** (PSI-unavailable handling) — implemented as a
-  reasonable default during Day 4 build, but not yet explicitly confirmed
-  the way every other decision in this log has been.
-
-Day 5 (Search Evidence) will add its own entries here as its scoring rules
-are proposed and confirmed.
+Nothing currently open — all decisions through Day 4, including the
+follow-up correction to decision #15, have been signed off. Day 5 (Search
+Evidence) will add its own entries here as its scoring rules are proposed
+and confirmed.

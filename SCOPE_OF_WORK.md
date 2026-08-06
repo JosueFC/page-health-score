@@ -266,16 +266,23 @@ Tracked here so nothing gets silently treated as permanent:
   single-CTA landing pages), explicitly flagged for later recalibration
   once real customer pages are available, same status as
   `MIN_VISIBLE_TEXT_WORDS`.
-- **PSI-unavailable handling scores 0, not a rescale ceiling** (§3/§4,
-  Day 4) — flagged during build, not explicitly part of the four Day 4
-  sign-off questions. If `pagespeed_result.error` is set (PSI request
-  failed entirely — bad key, quota exhausted, outage), both PSI-derived
-  signals score 0 rather than being excluded from the denominator the way
-  Structured Data's unknown-type case is. Chosen for consistency with this
-  scope's general "unverifiable is treated at least as harshly as a real
-  failure" pattern, but this specific case wasn't put to an explicit
-  sign-off the way the other four Day 4 decisions were — worth a deliberate
-  look rather than treating it as settled.
+- **PSI-unavailable handling rescales the PSI block out of the denominator**
+  (§3/§4, Day 4 — confirmed) — if `pagespeed_result.error` is set (PSI
+  request failed entirely: bad key, quota exhausted, outage, or PSI failing
+  to analyze the specific page), the two PSI-derived signals are excluded
+  from Technical Quality's denominator as a single 10-point block, rather
+  than scored 0. `max_points` for that page's Technical Quality component
+  drops from 20 to 10; alt coverage and internal linking are unaffected and
+  still count normally. Reasoning: this is framed as fetch.py's Unscored
+  concept (§4) applied at component granularity rather than page
+  granularity — a transient, external failure (not a permanent structural
+  coverage gap like Structured Data's unknown-type case) where the tool
+  genuinely doesn't know what PSI would have reported, so scoring 0 would
+  assert a fact that was never established. The raw PSI error string is
+  always carried in output regardless of score, matching the
+  always-report-the-diagnostic pattern used for Structured Data's
+  broken-JSON-LD-block count. `score.py` (Day 5) must read `max_points`
+  per-result for this component too, same as Structured Data's.
 
 ## 11. Integration trigger
 
