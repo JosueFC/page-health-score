@@ -11,8 +11,58 @@ per-component, which is why it sits alongside the fetch layer rather than
 inside any one component's scoring module -- Content Structure is the first
 component that *needs* it (word count, closing-tag well-formedness), but the
 assessment itself isn't Content-Structure-specific.
+
+Post-Day-6 addition: fetch identity (User-Agent + Accept headers). Found by
+testing this tool against a real site (rcimportspr.com) that returned HTTP
+406 under requests' default "python-requests/x.x" User-Agent but 200 under
+a real browser UA -- a WAF fingerprinting the client, not a genuine page
+problem. Left as the default, Crawlability would have reported "this tool
+got blocked" as if it meant "a search crawler would get blocked," which
+isn't the same claim.
+
+Decision (confirmed): USER_AGENT is configurable via env var, mirroring the
+PAGESPEED_API_KEY / GSC_CREDENTIALS_PATH pattern already established
+elsewhere -- sensible default, documented, operator-overridable -- rather
+than hardcoded with no override (inconsistent with every other
+externally-facing default in this project) or an honest custom identity
+like "PageHealthScoreBot/1.0" (empirically the wrong direction: most WAFs
+default-deny unrecognized bots, so this would likely get blocked MORE
+often, reproducing the exact failure being fixed). Real Googlebot
+impersonation was considered and rejected as the DEFAULT -- that's an
+ethics question ("should this tool impersonate Google") a default
+shouldn't quietly answer -- but making the UA configurable necessarily
+reopens that as an operator opt-in override, which is accepted with two
+required safeguards:
+    1. The UA actually used on every request is always recorded on
+       FetchResult.request_user_agent -- never just used internally and
+       discarded. Same "always report what was actually observed"
+       discipline as PSI error detail and Structured Data's broken-block
+       counts.
+    2. See SCOPE_OF_WORK.md §5: overriding to a Googlebot-mimicking UA is
+       the operator's own choice, outside this tool's default judgment --
+       not a supported or endorsed mode, just an override the design
+       doesn't prevent.
+
+Accept / Accept-Language are bundled alongside whichever UA is active,
+hardcoded rather than separately configurable: a request with only
+User-Agent populated and no other normal browser headers is itself an
+unusual fingerprint some WAFs specifically flag -- a partial disguise can
+read as MORE suspicious than no disguise, same lesson as Structured Data's
+"one broken schema block is worse than none." No evidence yet that
+operators need to control these independently of the UA, so no separate
+env vars for them (would be solving a problem nobody has).
+
+Explicitly deferred, not part of this fix: detecting and labeling "blocked
+by bot detection" as distinct from a genuine 404/500 (recognizing
+Cloudflare/Akamai challenge-page shapes, etc.). Same reasoning as rejecting
+SPA-framework-fingerprinting in §5 -- signature-matching a WAF's challenge
+page is a fragile, ongoing arms race against every vendor's changing
+templates, for uncertain value. This fix addresses getting real failures
+instead of false ones; precisely labeling the failure type is a separate,
+lower-value, higher-fragility project.
 """
 
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -22,6 +72,38 @@ import requests
 from bs4 import BeautifulSoup
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
+
+# --- fetch identity ----------------------------------------------------
+
+# A real, current browser UA string -- NOT requests' default identity, and
+# NOT a Googlebot impersonation (that's an operator opt-in via USER_AGENT,
+# not the default -- see module docstring). This specific string is itself
+# a §10 tunable: browser UA strings age as new versions ship, and this one
+# will eventually look stale and may need periodic updating the same way
+# any dated value does.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+# Hardcoded, bundled with whichever UA is active -- see module docstring on
+# why these aren't independently configurable.
+DEFAULT_ACCEPT_HEADER = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+DEFAULT_ACCEPT_LANGUAGE_HEADER = "en-US,en;q=0.9"
+
+
+def _resolve_request_headers() -> dict:
+    """Builds the header set for an outgoing fetch. UA is operator-
+    overridable via USER_AGENT; Accept/Accept-Language are always the
+    hardcoded defaults regardless of UA override (a mismatched pair is an
+    accepted, documented v1 simplification -- see SCOPE_OF_WORK.md §5)."""
+    user_agent = os.environ.get("USER_AGENT") or DEFAULT_USER_AGENT
+    return {
+        "User-Agent": user_agent,
+        "Accept": DEFAULT_ACCEPT_HEADER,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE_HEADER,
+    }
+
 
 # --- confidence model (§4) --------------------------------------------------
 
@@ -197,6 +279,7 @@ class FetchResult:
     html: Optional[str] = None
     error: Optional[str] = None
     error_category: Optional[str] = None  # None on success; "invalid_url" or "connection_failed" on failure -- see assess_confidence()
+    request_user_agent: str = ""  # the UA actually used for this request -- always populated, per the safeguard on the fetch-identity decision (module docstring)
 
     @property
     def succeeded(self) -> bool:
@@ -218,6 +301,12 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
     Callers (crawlability.py, and later score.py) decide what to do with the
     result.
 
+    Sends a browser-like User-Agent (operator-overridable via USER_AGENT)
+    plus hardcoded Accept/Accept-Language headers -- see module docstring
+    for why. The UA actually used is always recorded on the returned
+    FetchResult, on every path including failures, per the safeguard
+    attached to that decision.
+
     A malformed URL is distinguished from a genuine connection failure via
     error_category. requests raises MissingSchema/InvalidSchema/InvalidURL
     before ever attempting a connection, for a URL that's wrong on its
@@ -233,8 +322,11 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
     caught immediately by testing a third malformed-URL shape, not
     guessed correctly the first time.)
     """
+    request_headers = _resolve_request_headers()
+    user_agent = request_headers["User-Agent"]
+
     try:
-        response = requests.get(url, timeout=timeout, allow_redirects=True)
+        response = requests.get(url, headers=request_headers, timeout=timeout, allow_redirects=True)
     except ValueError as exc:
         # requests' own URL-parsing failures (MissingSchema, InvalidSchema,
         # InvalidURL) all land here -- input was invalid before any
@@ -247,6 +339,7 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
             html=None,
             error=str(exc),
             error_category=_ERROR_CATEGORY_INVALID_URL,
+            request_user_agent=user_agent,
         )
     except requests.RequestException as exc:
         return FetchResult(
@@ -257,6 +350,7 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
             html=None,
             error=str(exc),
             error_category=_ERROR_CATEGORY_CONNECTION_FAILED,
+            request_user_agent=user_agent,
         )
 
     return FetchResult(
@@ -266,4 +360,5 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
         headers=dict(response.headers),
         html=response.text,
         error=None,
+        request_user_agent=user_agent,
     )

@@ -121,6 +121,31 @@ Documented explicitly rather than silently producing misleading output:
 - **Truncation vs. malformed-but-complete HTML cannot be distinguished** by the
   closing-tag check alone (see §4). Accepted as a v1 simplification; the
   wording constraint above is the mitigation, not a fix.
+- **Basic bot-detection can produce a false Crawlability failure under this
+  tool's default fetch identity.** Observed directly: a real site
+  (rcimportspr.com) returned HTTP 406 under `requests`' default
+  `python-requests/x.x` User-Agent, and HTTP 200 under a standard browser
+  User-Agent — a WAF fingerprinting the client, not a genuine page problem.
+  Mitigated by sending a browser-like default User-Agent plus matching
+  Accept/Accept-Language headers (see `fetch.py`), operator-overridable via
+  `USER_AGENT`. Not solved: a WAF could still fingerprint on other request
+  characteristics (TLS handshake, header ordering, timing) this tool
+  doesn't control, and this tool cannot distinguish "genuinely blocked from
+  all crawlers" from "blocked by a fingerprint check a real crawler happens
+  to pass" — labeling that distinction was considered and explicitly
+  deferred (see `DECISIONS_LOG.md` decision #23) as a fragile,
+  higher-effort, uncertain-value arms race, the same reasoning already
+  applied to rejecting SPA-framework-fingerprinting above.
+- **`USER_AGENT` is operator-configurable, which reopens a door this
+  project deliberately did not want open by default: impersonating a real
+  search crawler (e.g. Googlebot's own UA string).** The tool's default
+  never does this, and doing so is not a supported or endorsed mode — it's
+  simply an override the configurability doesn't prevent. If an operator
+  sets `USER_AGENT` to a Googlebot-mimicking string, that's the operator's
+  own choice, made outside this tool's default judgment, and the UA
+  actually used is always recorded in raw diagnostic output
+  (`FetchResult.request_user_agent`) specifically so that choice is never
+  silently invisible in the results.
 
 ## 6. Architecture
 
@@ -352,6 +377,27 @@ Tracked here so nothing gets silently treated as permanent:
   a genuine, separate gap for WeekLift's eventual integration (§11) —
   `gsc_client.py` deliberately does not anticipate it now; noted here so it
   isn't silently assumed away later.
+- **`DEFAULT_USER_AGENT`** (§5, post-Day-6) — a specific, dated browser UA
+  string (`fetch.py`). Will age the same way any dated value does as
+  browsers ship new versions; may need periodic manual updating to stay
+  representative of "a current browser," unlike the other tunables in this
+  list which are more about threshold calibration than staleness.
+- **`USER_AGENT` operator override** (§5, post-Day-6) — configurable via
+  env var, mirroring `PAGESPEED_API_KEY`/`GSC_CREDENTIALS_PATH`. Confirmed
+  over a hardcoded-no-override default (Option A, inconsistent with this
+  project's established pattern) and over an honest custom identity like
+  `PageHealthScoreBot/1.0` (Option C, empirically the wrong direction —
+  most WAFs default-deny unrecognized bots). The override reopens the door
+  to operator-chosen Googlebot impersonation; see §5's limitation entry for
+  the full reasoning on why that's accepted as an unsupported opt-in rather
+  than prevented outright.
+- **`DEFAULT_ACCEPT_HEADER` / `DEFAULT_ACCEPT_LANGUAGE_HEADER`** (§5,
+  post-Day-6) — hardcoded, bundled with whichever UA is active, not
+  independently configurable via their own env vars. If an operator
+  overrides `USER_AGENT` to something inconsistent with these (e.g. a
+  mobile UA with desktop-shaped Accept headers), that mismatch is an
+  accepted, documented v1 simplification — no evidence yet that operators
+  need to control these independently of the UA.
 
 ## 11. Integration trigger
 
