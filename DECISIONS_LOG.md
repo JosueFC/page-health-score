@@ -290,8 +290,52 @@ number, not what's *recorded*.
 
 ---
 
+Not new scoring decisions — this is what running the actual §12 checklist
+against the real, merged repo (rather than assuming the build was correct)
+turned up.
+
+### 19. `python -m page_health <url>` didn't actually work
+**Bug, fixed.** Cloning the live repo fresh and running the CLI exactly as
+documented (`python -m page_health <url>`) failed with `No module named
+page_health.__main__`. `cli.py`'s `if __name__ == "__main__":` guard only
+fires when `cli.py` itself is invoked directly — package-level `-m`
+invocation needs a `__main__.py`, which had never been created. This had
+passed every prior test because no test actually exercised the packaged CLI
+entry point the way §12 specifies it ("CLI runs end-to-end... `python -m
+page_health <url>`") — the CLI's own tests called `main()` directly, and
+`score.py`'s tests never touched the CLI at all. Fixed by adding
+`page_health/__main__.py`. Worth noting as a gap in test coverage, not just
+a one-line fix: none of the 153 tests would have caught this on their own.
+
+### 20. Two thresholds from earlier signed-off proposals were never given their own §10 line
+**Documentation gap, fixed.** `ALT_COVERAGE_THRESHOLD = 0.90` (Technical
+Quality, Day 4) and `MIN_LIST_ITEMS` / `MIN_TABLE_ROWS = 3` (Content
+Structure, Day 2) were both part of proposals you explicitly signed off on
+at the time — but unlike every other threshold in this project, they never
+got their own itemized entry in §10's tunable-values list. Found by
+grepping the codebase for every `_THRESHOLD`/`MIN_`-style constant and
+checking each one against §10, rather than trusting that §10 was already
+complete. Both added now, purely a documentation fix — no behavior changed.
+
+### 21. `DATA_LAG_DAYS = 3` was never signed off at all
+**Flagged, not yet confirmed.** Unlike #20, this one isn't a documentation
+gap — it's a real constant (`gsc_client.py`, accounts for GSC's own
+data-processing lag by backing off the query window's end date a few days
+from today) that was introduced during the Day 5 build and never surfaced
+for a decision the way every other threshold in this project has been. Same
+shape of miss as decision #15's first draft: a reasonable default was
+implemented and shipped without an explicit sign-off step. Added to §10 as
+flagged, not confirmed — worth a deliberate look rather than being treated
+as settled by default.
+
+---
+
 ## Still open / explicitly deferred
 
-Nothing currently open — all decisions through Day 5 have been signed off.
-This is the last component per §7's build order; remaining work is §12's
-definition-of-done pass (Day 6 in BUILD_ROADMAP.md).
+- **Decision #21 above** (`DATA_LAG_DAYS = 3`) — implemented as a
+  reasonable default during Day 5 build, flagged during the Day 6 audit,
+  not yet explicitly confirmed.
+
+All other decisions through Day 6 have been signed off. §12's
+definition-of-done checklist has been run against the live, merged repo —
+see the top-level response for the full pass/fail breakdown.
