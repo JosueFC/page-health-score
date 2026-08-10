@@ -195,6 +195,17 @@ promise.
   correct model for a single-operator local CLI — not a stand-in for
   WeekLift's eventual need for per-customer GSC OAuth, which is a genuinely
   different, currently-unbuilt auth flow (see §11 in `SCOPE_OF_WORK.md`).
+- **Basic bot-detection can produce a false Crawlability failure.**
+  Observed directly on a real site: HTTP 406 under `requests`' default
+  User-Agent, HTTP 200 under a browser UA. Mitigated with a browser-like
+  default `User-Agent` and matching `Accept`/`Accept-Language` headers,
+  operator-overridable via `USER_AGENT` — not solved: a WAF can still
+  fingerprint on other request characteristics this tool doesn't control,
+  and this tool cannot distinguish "genuinely blocked from all crawlers"
+  from "blocked by a fingerprint check a real crawler happens to pass."
+  See `DECISIONS_LOG.md` decision #23 for the full reasoning, including why
+  Googlebot impersonation was rejected as the *default* but remains an
+  unsupported operator opt-in via `USER_AGENT`.
 
 ---
 
@@ -202,6 +213,7 @@ promise.
 
 | Env var | Used by | Behavior when unset |
 |---|---|---|
+| `USER_AGENT` | `fetch.py` | Uses a browser-like default UA (not `requests`' default identity) |
 | `PAGESPEED_API_KEY` | `pagespeed_client.py` | Unauthenticated PSI calls (lower daily quota) |
 | `GSC_CREDENTIALS_PATH` | `gsc_client.py` | Search Evidence rescales to 0/0 |
 | `GSC_SITE_URL` | `gsc_client.py` | Search Evidence rescales to 0/0 |

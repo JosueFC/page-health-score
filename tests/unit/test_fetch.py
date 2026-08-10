@@ -128,3 +128,93 @@ def test_headers_are_captured(mock_get):
     result = fetch_page("https://example.com/page")
 
     assert result.headers.get("X-Robots-Tag") == "noindex"
+
+
+# --- fetch identity (post-Day-6: real site returned 406 under requests'
+# default UA, 200 under a browser UA -- see module docstring for the fix) --
+
+
+@patch("page_health.fetch.requests.get")
+def test_default_user_agent_is_browser_like_not_pythons_default(mock_get, monkeypatch):
+    monkeypatch.delenv("USER_AGENT", raising=False)
+    mock_get.return_value = _mock_response()
+
+    fetch_page("https://example.com/page")
+
+    _, kwargs = mock_get.call_args
+    sent_ua = kwargs["headers"]["User-Agent"]
+    assert "python-requests" not in sent_ua
+    assert "Mozilla" in sent_ua  # every mainstream browser UA includes this token
+
+
+@patch("page_health.fetch.requests.get")
+def test_user_agent_env_var_overrides_the_default(mock_get, monkeypatch):
+    monkeypatch.setenv("USER_AGENT", "MyCustomBot/1.0")
+    mock_get.return_value = _mock_response()
+
+    fetch_page("https://example.com/page")
+
+    _, kwargs = mock_get.call_args
+    assert kwargs["headers"]["User-Agent"] == "MyCustomBot/1.0"
+
+
+@patch("page_health.fetch.requests.get")
+def test_accept_and_accept_language_headers_are_always_sent(mock_get, monkeypatch):
+    monkeypatch.delenv("USER_AGENT", raising=False)
+    mock_get.return_value = _mock_response()
+
+    fetch_page("https://example.com/page")
+
+    _, kwargs = mock_get.call_args
+    assert "Accept" in kwargs["headers"]
+    assert "Accept-Language" in kwargs["headers"]
+
+
+@patch("page_health.fetch.requests.get")
+def test_accept_headers_are_not_configurable_via_env_var(mock_get, monkeypatch):
+    """Decision: Accept/Accept-Language are hardcoded, bundled with
+    whichever UA is active -- not independently configurable. Setting an
+    unrelated env var should have no effect on them."""
+    monkeypatch.setenv("USER_AGENT", "MyCustomBot/1.0")
+    mock_get.return_value = _mock_response()
+
+    fetch_page("https://example.com/page")
+
+    _, kwargs = mock_get.call_args
+    from page_health.fetch import DEFAULT_ACCEPT_HEADER, DEFAULT_ACCEPT_LANGUAGE_HEADER
+
+    assert kwargs["headers"]["Accept"] == DEFAULT_ACCEPT_HEADER
+    assert kwargs["headers"]["Accept-Language"] == DEFAULT_ACCEPT_LANGUAGE_HEADER
+
+
+@patch("page_health.fetch.requests.get")
+def test_request_user_agent_recorded_on_successful_fetch(mock_get, monkeypatch):
+    monkeypatch.setenv("USER_AGENT", "MyCustomBot/1.0")
+    mock_get.return_value = _mock_response()
+
+    result = fetch_page("https://example.com/page")
+
+    assert result.request_user_agent == "MyCustomBot/1.0"
+
+
+@patch("page_health.fetch.requests.get")
+def test_request_user_agent_recorded_even_on_connection_failure(mock_get, monkeypatch):
+    """Safeguard requirement: the UA actually used is always recorded, on
+    every path -- including failures -- never just used internally and
+    discarded."""
+    monkeypatch.setenv("USER_AGENT", "MyCustomBot/1.0")
+    mock_get.side_effect = requests.ConnectionError("Connection refused")
+
+    result = fetch_page("https://example.com/page")
+
+    assert result.request_user_agent == "MyCustomBot/1.0"
+
+
+@patch("page_health.fetch.requests.get")
+def test_request_user_agent_recorded_even_on_invalid_url(mock_get, monkeypatch):
+    monkeypatch.setenv("USER_AGENT", "MyCustomBot/1.0")
+    mock_get.side_effect = requests.exceptions.MissingSchema("No scheme supplied")
+
+    result = fetch_page("weeklift.com")
+
+    assert result.request_user_agent == "MyCustomBot/1.0"

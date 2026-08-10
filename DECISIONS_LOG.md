@@ -370,10 +370,82 @@ shapes.
 
 ---
 
+## Post-Day-6, continued — fetch identity
+
+### 23. Configurable User-Agent with browser-like default, hardcoded Accept/Accept-Language
+**Confirmed.** Surfaced by testing the tool against a real site
+(rcimportspr.com), not by inspection — it returned HTTP 406 under
+`requests`' default `python-requests/x.x` User-Agent, and HTTP 200 under a
+standard browser User-Agent, confirmed side by side with curl. Left alone,
+Crawlability was measuring "did this specific WAF fingerprint block this
+tool" and reporting it as "this page is uncrawlable" — a real gap in what
+the component claims to measure (§3: an approximation of what a search
+crawler experiences), not one of the JS-execution/framework-fingerprinting
+limitations §5 already covers.
+
+Four options for the User-Agent itself:
+- **(A) Hardcoded browser UA, no override.** Rejected: this project has
+  now established the configurable-with-sensible-default pattern twice for
+  structurally identical problems (`PAGESPEED_API_KEY`,
+  `GSC_CREDENTIALS_PATH`). Hardcoding this one instead would be the
+  inconsistent choice, not the simpler one.
+- **(B) Impersonate Googlebot's real UA, as the default.** Rejected as a
+  *default* — this raises a genuine, not-implicitly-decided ethics
+  question (should this tool impersonate Google) that a default shouldn't
+  quietly answer on the operator's behalf.
+- **(C) An honest custom identity** (e.g. `PageHealthScoreBot/1.0`).
+  Rejected — empirically the wrong direction. Most WAFs default-deny
+  *unrecognized* bots outright, so this would likely reproduce the exact
+  failure being fixed, more often than the `python-requests` default did.
+- **(D) Configurable via `USER_AGENT` env var, browser-like default.**
+  Confirmed. Matches the established pattern, avoids B's implicit ethics
+  call, avoids C's empirically-worse outcome.
+
+Choosing D necessarily reopens B as an operator opt-in override — nothing
+stops someone from setting `USER_AGENT` to a Googlebot-mimicking string
+themselves. Two safeguards required alongside D, not treated as optional
+polish:
+1. `FetchResult.request_user_agent` records the UA actually used on every
+   request, on every code path including failures — never just used
+   internally and discarded. Same always-report-what-was-observed
+   discipline as PSI's error detail and Structured Data's broken-block
+   counts.
+2. §5 carries an explicit line: overriding to a Googlebot-mimicking UA is
+   the operator's own choice, outside this tool's default judgment — not a
+   supported or endorsed mode, just an override the design doesn't
+   prevent.
+
+**Accept / Accept-Language:** bundled alongside whichever UA is active,
+hardcoded rather than given their own env vars. Reasoning: a request with
+only `User-Agent` populated and no other normal browser headers is itself
+an unusual fingerprint some WAFs specifically flag — a partial disguise can
+read as *more* suspicious than no disguise at all, the same lesson already
+learned from Structured Data's "one broken schema block is worse than
+none" (decision #8). No evidence yet that operators need to control these
+independently of the UA, so no separate env vars — that would be solving a
+problem nobody has. If an operator's `USER_AGENT` override doesn't match
+the hardcoded Accept/Accept-Language pair (e.g. a mobile UA with
+desktop-shaped Accept headers), that mismatch is accepted as a known,
+documented v1 simplification rather than solved with per-identity header
+sets.
+
+**Explicitly deferred, not part of this decision:** detecting and
+labeling "blocked by bot detection" as distinct from a genuine 404/500
+(e.g. recognizing Cloudflare/Akamai challenge-page shapes). Same reasoning
+as rejecting SPA-framework-fingerprinting (§5): any signature-matching
+approach goes stale the moment a WAF vendor changes their challenge
+template — a fragile, ongoing arms race for uncertain value. This fix
+addresses getting real failures instead of false ones; precisely labeling
+the failure type is a separate, lower-value, higher-fragility project,
+worth a one-line backlog note if it comes up again rather than a design
+decision now.
+
+---
+
 ## Still open / explicitly deferred
 
 - **Decision #21** (`DATA_LAG_DAYS = 3`) — implemented as a reasonable
   default during Day 5 build, flagged during the Day 6 audit, not yet
   explicitly confirmed.
 
-All other decisions, including #22, have been signed off.
+All other decisions, including #22 and #23, have been signed off.
