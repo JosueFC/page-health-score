@@ -3,12 +3,31 @@
 Per §12, runs end-to-end against an arbitrary public URL with zero WeekLift
 dependency -- PSI and GSC credentials are optional; scoring degrades
 (components rescale out) rather than failing when they're absent.
+
+URL scheme normalization (CLI-only convenience, not built into score_page()
+itself): a bare domain like "weeklift.com" is auto-prefixed with "https://",
+since most people typing a URL by hand won't include the scheme. This is
+deliberately CLI-level, not core-library behavior -- score_page() and
+fetch_page() take exactly what they're given and report back precisely what
+happened (see fetch.py's invalid_url vs. no_http_response distinction); a
+future caller other than this CLI (a future web UI, a batch script) should
+not have its input silently rewritten without an explicit choice to do so.
+The normalization is never silent here either -- a notice is printed so the
+person can see their input was changed, not just guess from the output.
 """
 
 import sys
+from urllib.parse import urlsplit
 
 from page_health.fetch import ConfidenceTier
 from page_health.score import score_page
+
+
+def _normalize_url(url: str) -> tuple:
+    """Prefix a scheme-less URL with https://. Returns (url, was_changed)."""
+    if not urlsplit(url).scheme:
+        return f"https://{url}", True
+    return url, False
 
 
 def _print_component(name: str, result) -> None:
@@ -23,7 +42,10 @@ def main(argv=None) -> int:
         print("Usage: python -m page_health <url>", file=sys.stderr)
         return 2
 
-    url = argv[0]
+    url, was_normalized = _normalize_url(argv[0])
+    if was_normalized:
+        print(f"No scheme provided -- using {url}", file=sys.stderr)
+
     result = score_page(url)
 
     print(f"URL: {result.url}")

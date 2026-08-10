@@ -330,12 +330,50 @@ as settled by default.
 
 ---
 
+### 22. `invalid_url` vs. `no_http_response` distinction
+**Confirmed, fixed, and corrected once more before landing.** Found by
+actually running the CLI against `weeklift.com` (no scheme) and noticing
+the output said `unscored (no_http_response)` — misleading, since the
+request never got far enough to fail from unreachability; the URL was
+malformed before any connection was attempted. This directly violated
+§4's governing principle (reason codes report what was observed,
+precisely) in the one place it hadn't been checked: the Unscored tier's
+own less-rigidly-specified reason codes.
+
+First fix caught `MissingSchema` and `InvalidURL` by name via a tuple of
+`except` types. Testing a third malformed-URL shape (`InvalidSchema`,
+raised for a recognized-but-unsupported scheme like a typo'd `ht!tp://`)
+immediately showed the first fix was incomplete — that exception fell
+through to the generic `connection_failed` category, reproducing the exact
+bug being fixed. Corrected by catching on `ValueError` instead of naming
+exception classes one at a time: every one of `requests`' own
+URL-parsing exceptions (`MissingSchema`, `InvalidSchema`, `InvalidURL`)
+subclasses both `RequestException` and `ValueError` simultaneously, while
+genuine connection failures (`ConnectionError`, `Timeout`) subclass
+`RequestException` but not `ValueError` — a clean, exhaustive
+discriminator confirmed against the actual class hierarchy rather than an
+enumeration that has to be kept in sync by hand.
+
+Paired with a CLI-level fix (`_normalize_url()` in `cli.py`): a bare domain
+like `weeklift.com` is auto-prefixed with `https://`, since most people
+typing a URL by hand won't include the scheme — but this is deliberately
+CLI-only, not built into `score_page()`/`fetch_page()` themselves, so a
+future caller other than this CLI doesn't have its input silently
+rewritten without an explicit choice to do so. The CLI always prints a
+notice when it normalizes, rather than rewriting silently.
+
+`tests/unit/test_cli.py` didn't exist before this fix — its absence is
+part of why neither the missing-`__main__.py` bug (decision #19) nor this
+one were caught earlier. Added now, alongside the fetch-level and
+confidence-level regression tests for all three malformed-URL exception
+shapes.
+
+---
+
 ## Still open / explicitly deferred
 
-- **Decision #21 above** (`DATA_LAG_DAYS = 3`) — implemented as a
-  reasonable default during Day 5 build, flagged during the Day 6 audit,
-  not yet explicitly confirmed.
+- **Decision #21** (`DATA_LAG_DAYS = 3`) — implemented as a reasonable
+  default during Day 5 build, flagged during the Day 6 audit, not yet
+  explicitly confirmed.
 
-All other decisions through Day 6 have been signed off. §12's
-definition-of-done checklist has been run against the live, merged repo —
-see the top-level response for the full pass/fail breakdown.
+All other decisions, including #22, have been signed off.

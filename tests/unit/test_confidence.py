@@ -8,6 +8,7 @@ back toward false certainty.
 from page_health.fetch import (
     MIN_VISIBLE_TEXT_WORDS,
     REASON_CLOSING_HTML_TAG_NOT_FOUND,
+    REASON_INVALID_URL,
     REASON_LOW_VISIBLE_TEXT_WORD_COUNT,
     REASON_NO_HTTP_RESPONSE,
     REASON_NON_HTML_CONTENT_TYPE,
@@ -44,10 +45,27 @@ def html_page(body: str, well_formed: bool = True) -> str:
 
 def test_connection_failure_is_unscored():
     fetch_result = make_fetch_result(html=None, error="Connection refused")
+    fetch_result.error_category = "connection_failed"
     result = assess_confidence(fetch_result)
     assert result.tier == ConfidenceTier.UNSCORED
     assert result.unscored_reason == REASON_NO_HTTP_RESPONSE
     assert result.visible_text_word_count is None
+
+
+def test_invalid_url_is_unscored_with_a_distinct_reason_from_connection_failure():
+    """A malformed/scheme-less URL must not be reported as 'no_http_response'
+    -- that code implies a connection was attempted and failed, which isn't
+    what happened here. This was a real bug: both cases used to collapse
+    into the same reason code."""
+    fetch_result = make_fetch_result(
+        html=None,
+        error="Invalid URL 'weeklift.com': No scheme supplied. Perhaps you meant https://weeklift.com?",
+    )
+    fetch_result.error_category = "invalid_url"
+    result = assess_confidence(fetch_result)
+    assert result.tier == ConfidenceTier.UNSCORED
+    assert result.unscored_reason == REASON_INVALID_URL
+    assert result.unscored_reason != REASON_NO_HTTP_RESPONSE
 
 
 def test_no_html_without_error_is_unscored():
