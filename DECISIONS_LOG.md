@@ -290,8 +290,90 @@ number, not what's *recorded*.
 
 ---
 
+Not new scoring decisions — this is what running the actual §12 checklist
+against the real, merged repo (rather than assuming the build was correct)
+turned up.
+
+### 19. `python -m page_health <url>` didn't actually work
+**Bug, fixed.** Cloning the live repo fresh and running the CLI exactly as
+documented (`python -m page_health <url>`) failed with `No module named
+page_health.__main__`. `cli.py`'s `if __name__ == "__main__":` guard only
+fires when `cli.py` itself is invoked directly — package-level `-m`
+invocation needs a `__main__.py`, which had never been created. This had
+passed every prior test because no test actually exercised the packaged CLI
+entry point the way §12 specifies it ("CLI runs end-to-end... `python -m
+page_health <url>`") — the CLI's own tests called `main()` directly, and
+`score.py`'s tests never touched the CLI at all. Fixed by adding
+`page_health/__main__.py`. Worth noting as a gap in test coverage, not just
+a one-line fix: none of the 153 tests would have caught this on their own.
+
+### 20. Two thresholds from earlier signed-off proposals were never given their own §10 line
+**Documentation gap, fixed.** `ALT_COVERAGE_THRESHOLD = 0.90` (Technical
+Quality, Day 4) and `MIN_LIST_ITEMS` / `MIN_TABLE_ROWS = 3` (Content
+Structure, Day 2) were both part of proposals you explicitly signed off on
+at the time — but unlike every other threshold in this project, they never
+got their own itemized entry in §10's tunable-values list. Found by
+grepping the codebase for every `_THRESHOLD`/`MIN_`-style constant and
+checking each one against §10, rather than trusting that §10 was already
+complete. Both added now, purely a documentation fix — no behavior changed.
+
+### 21. `DATA_LAG_DAYS = 3` was never signed off at all
+**Flagged, not yet confirmed.** Unlike #20, this one isn't a documentation
+gap — it's a real constant (`gsc_client.py`, accounts for GSC's own
+data-processing lag by backing off the query window's end date a few days
+from today) that was introduced during the Day 5 build and never surfaced
+for a decision the way every other threshold in this project has been. Same
+shape of miss as decision #15's first draft: a reasonable default was
+implemented and shipped without an explicit sign-off step. Added to §10 as
+flagged, not confirmed — worth a deliberate look rather than being treated
+as settled by default.
+
+---
+
+### 22. `invalid_url` vs. `no_http_response` distinction
+**Confirmed, fixed, and corrected once more before landing.** Found by
+actually running the CLI against `weeklift.com` (no scheme) and noticing
+the output said `unscored (no_http_response)` — misleading, since the
+request never got far enough to fail from unreachability; the URL was
+malformed before any connection was attempted. This directly violated
+§4's governing principle (reason codes report what was observed,
+precisely) in the one place it hadn't been checked: the Unscored tier's
+own less-rigidly-specified reason codes.
+
+First fix caught `MissingSchema` and `InvalidURL` by name via a tuple of
+`except` types. Testing a third malformed-URL shape (`InvalidSchema`,
+raised for a recognized-but-unsupported scheme like a typo'd `ht!tp://`)
+immediately showed the first fix was incomplete — that exception fell
+through to the generic `connection_failed` category, reproducing the exact
+bug being fixed. Corrected by catching on `ValueError` instead of naming
+exception classes one at a time: every one of `requests`' own
+URL-parsing exceptions (`MissingSchema`, `InvalidSchema`, `InvalidURL`)
+subclasses both `RequestException` and `ValueError` simultaneously, while
+genuine connection failures (`ConnectionError`, `Timeout`) subclass
+`RequestException` but not `ValueError` — a clean, exhaustive
+discriminator confirmed against the actual class hierarchy rather than an
+enumeration that has to be kept in sync by hand.
+
+Paired with a CLI-level fix (`_normalize_url()` in `cli.py`): a bare domain
+like `weeklift.com` is auto-prefixed with `https://`, since most people
+typing a URL by hand won't include the scheme — but this is deliberately
+CLI-only, not built into `score_page()`/`fetch_page()` themselves, so a
+future caller other than this CLI doesn't have its input silently
+rewritten without an explicit choice to do so. The CLI always prints a
+notice when it normalizes, rather than rewriting silently.
+
+`tests/unit/test_cli.py` didn't exist before this fix — its absence is
+part of why neither the missing-`__main__.py` bug (decision #19) nor this
+one were caught earlier. Added now, alongside the fetch-level and
+confidence-level regression tests for all three malformed-URL exception
+shapes.
+
+---
+
 ## Still open / explicitly deferred
 
-Nothing currently open — all decisions through Day 5 have been signed off.
-This is the last component per §7's build order; remaining work is §12's
-definition-of-done pass (Day 6 in BUILD_ROADMAP.md).
+- **Decision #21** (`DATA_LAG_DAYS = 3`) — implemented as a reasonable
+  default during Day 5 build, flagged during the Day 6 audit, not yet
+  explicitly confirmed.
+
+All other decisions, including #22, have been signed off.

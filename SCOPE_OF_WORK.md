@@ -313,6 +313,24 @@ Tracked here so nothing gets silently treated as permanent:
   striking-distance design precedent for reducing short-term noise in
   position/traffic signals, rather than an unstated or arbitrarily
   different number.
+- **`ALT_COVERAGE_THRESHOLD = 0.90`** (§3, Day 4) — part of the originally
+  signed-off Technical Quality proposal ("full 5 points if coverage >= 90%")
+  but hadn't been given its own §10 line item until this Day 6 audit caught
+  the omission. Same floor/gate framing and tunable status as the PSI score
+  gates.
+- **`MIN_LIST_ITEMS = 3`, `MIN_TABLE_ROWS = 3`** (§3, Day 2) — part of the
+  originally signed-off Content Structure proposal ("≥3 `<li>` children",
+  "≥2 `<tr>` rows beyond header" = 3 total), same omission as above, caught
+  and added during the Day 6 audit.
+- **`DATA_LAG_DAYS = 3`** (§5, Day 5) — **not explicitly signed off.**
+  Introduced during `gsc_client.py`'s build to account for GSC's own
+  data-processing lag (querying "yesterday" as the window's end date
+  frequently returns incomplete data for the most recent few days), but
+  this specific number was never surfaced for a decision the way every
+  other threshold in this project has been. Caught during the Day 6 audit
+  when checking the codebase for undocumented-but-decided values — worth a
+  deliberate look rather than treating it as settled, same treatment
+  decision #15 originally got before being explicitly confirmed.
 - **Headline score is always projected onto 0–100, never shown as a raw
   variable-denominator fraction** (§1/§4/§8, Day 5, Decision C) — this
   applies on every page, not only when a component rescales out: the

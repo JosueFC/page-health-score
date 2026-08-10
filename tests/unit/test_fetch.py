@@ -56,6 +56,48 @@ def test_connection_failure_sets_error_and_no_html(mock_get):
     assert result.status_code is None
     assert result.error == "Connection refused"
     assert result.succeeded is False
+    assert result.error_category == "connection_failed"
+
+
+@patch("page_health.fetch.requests.get")
+def test_missing_scheme_url_is_categorized_as_invalid_url_not_connection_failure(mock_get):
+    """A scheme-less URL (e.g. 'weeklift.com') never reaches the network at
+    all -- requests raises MissingSchema before attempting a connection.
+    That's a different fact from a genuine connection failure and must be
+    categorized separately, so assess_confidence() can report an accurate
+    reason rather than collapsing both into 'no_http_response'."""
+    mock_get.side_effect = requests.exceptions.MissingSchema(
+        "Invalid URL 'weeklift.com': No scheme supplied. Perhaps you meant https://weeklift.com?"
+    )
+
+    result = fetch_page("weeklift.com")
+
+    assert result.html is None
+    assert result.error_category == "invalid_url"
+    assert "No scheme supplied" in result.error
+
+
+@patch("page_health.fetch.requests.get")
+def test_malformed_url_is_categorized_as_invalid_url(mock_get):
+    mock_get.side_effect = requests.exceptions.InvalidURL("Invalid URL")
+    result = fetch_page("https://[invalid")
+    assert result.error_category == "invalid_url"
+
+
+@patch("page_health.fetch.requests.get")
+def test_invalid_schema_is_categorized_as_invalid_url(mock_get):
+    """Regression test: the first version of this fix only caught
+    MissingSchema and InvalidURL by name and missed InvalidSchema (raised
+    for a recognized-but-unsupported scheme, e.g. a typo'd 'ht!tp://').
+    fetch_page() now catches on ValueError generally -- every one of
+    requests' own URL-parsing exceptions subclasses it -- rather than
+    naming exception classes one at a time."""
+    mock_get.side_effect = requests.exceptions.InvalidSchema(
+        "No connection adapters were found for 'ht!tp://example.com'"
+    )
+    result = fetch_page("ht!tp://example.com")
+    assert result.error_category == "invalid_url"
+    assert result.error_category != "connection_failed"
 
 
 @patch("page_health.fetch.requests.get")

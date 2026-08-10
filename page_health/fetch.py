@@ -46,8 +46,27 @@ REASON_LOW_VISIBLE_TEXT_WORD_COUNT = "low_visible_text_word_count"
 # Reason codes for the Unscored tier. Less rigidly specified by the SoW than
 # the two low-confidence detectors above, but kept as named constants rather
 # than inline strings for the same reason.
+#
+# invalid_url vs. no_http_response was a real precision bug, not a
+# hypothetical one: a scheme-less URL (e.g. "weeklift.com" instead of
+# "https://weeklift.com") never gets far enough to attempt a connection at
+# all, but was originally collapsed into the same "no_http_response" code as
+# a genuine connection failure (DNS failure, refused connection, timeout).
+# Those are different facts -- "the input was malformed" vs. "we tried to
+# reach it and couldn't" -- and collapsing them violates this module's own
+# governing principle (reason codes report what was observed, precisely).
+# Caught by manually running the CLI against a real scheme-less URL, not by
+# any of the 153 existing tests.
 REASON_NO_HTTP_RESPONSE = "no_http_response"
 REASON_NON_HTML_CONTENT_TYPE = "non_html_content_type"
+REASON_INVALID_URL = "invalid_url"
+
+# Internal categorization on FetchResult.error_category, used by
+# assess_confidence() to pick the right Unscored reason. Not part of the
+# public reason-code vocabulary itself -- just how fetch_page() tells
+# assess_confidence() which kind of failure this was.
+_ERROR_CATEGORY_INVALID_URL = "invalid_url"
+_ERROR_CATEGORY_CONNECTION_FAILED = "connection_failed"
 
 
 class ConfidenceTier(str, Enum):
@@ -116,9 +135,14 @@ def assess_confidence(fetch_result: "FetchResult") -> ConfidenceResult:
     does.
     """
     if fetch_result.error is not None or fetch_result.html is None:
+        reason = (
+            REASON_INVALID_URL
+            if fetch_result.error_category == _ERROR_CATEGORY_INVALID_URL
+            else REASON_NO_HTTP_RESPONSE
+        )
         return ConfidenceResult(
             tier=ConfidenceTier.UNSCORED,
-            unscored_reason=REASON_NO_HTTP_RESPONSE,
+            unscored_reason=reason,
         )
 
     content_type = ""
@@ -172,6 +196,7 @@ class FetchResult:
     headers: dict = field(default_factory=dict)
     html: Optional[str] = None
     error: Optional[str] = None
+    error_category: Optional[str] = None  # None on success; "invalid_url" or "connection_failed" on failure -- see assess_confidence()
 
     @property
     def succeeded(self) -> bool:
@@ -192,9 +217,37 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
     No parsing, no scoring, no confidence judgments -- just the HTTP call.
     Callers (crawlability.py, and later score.py) decide what to do with the
     result.
+
+    A malformed URL is distinguished from a genuine connection failure via
+    error_category. requests raises MissingSchema/InvalidSchema/InvalidURL
+    before ever attempting a connection, for a URL that's wrong on its
+    face -- a different fact from "we tried to reach it and couldn't."
+    These are caught via ValueError rather than named one at a time: every
+    one of requests' URL-parsing exceptions subclasses both
+    RequestException and ValueError, while genuine connection failures
+    (ConnectionError, Timeout, etc.) subclass RequestException but NOT
+    ValueError -- a clean, exhaustive discriminator rather than an
+    enumeration that has to be kept in sync with requests' exception
+    hierarchy by hand. (The first version of this fix only caught
+    MissingSchema and InvalidURL by name and missed InvalidSchema --
+    caught immediately by testing a third malformed-URL shape, not
+    guessed correctly the first time.)
     """
     try:
         response = requests.get(url, timeout=timeout, allow_redirects=True)
+    except ValueError as exc:
+        # requests' own URL-parsing failures (MissingSchema, InvalidSchema,
+        # InvalidURL) all land here -- input was invalid before any
+        # connection was attempted.
+        return FetchResult(
+            original_url=url,
+            final_url=url,
+            status_code=None,
+            headers={},
+            html=None,
+            error=str(exc),
+            error_category=_ERROR_CATEGORY_INVALID_URL,
+        )
     except requests.RequestException as exc:
         return FetchResult(
             original_url=url,
@@ -203,6 +256,7 @@ def fetch_page(url: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> FetchResul
             headers={},
             html=None,
             error=str(exc),
+            error_category=_ERROR_CATEGORY_CONNECTION_FAILED,
         )
 
     return FetchResult(
