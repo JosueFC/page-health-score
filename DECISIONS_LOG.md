@@ -310,7 +310,7 @@ a one-line fix: none of the 153 tests would have caught this on their own.
 ### 20. Two thresholds from earlier signed-off proposals were never given their own §10 line
 **Documentation gap, fixed.** `ALT_COVERAGE_THRESHOLD = 0.90` (Technical
 Quality, Day 4) and `MIN_LIST_ITEMS` / `MIN_TABLE_ROWS = 3` (Content
-Structure, Day 2) were both part of proposals you explicitly signed off on
+Structure, Day 2) were both part of proposals that were explicitly signed off
 at the time — but unlike every other threshold in this project, they never
 got their own itemized entry in §10's tunable-values list. Found by
 grepping the codebase for every `_THRESHOLD`/`MIN_`-style constant and
