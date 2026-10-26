@@ -10,6 +10,9 @@ marketed or designed as, a GEO (Generative Engine Optimization) or
 AI-citation-likelihood predictor.** See "What this is not," below — this
 constraint is permanent, not a v1 simplification.
 
+It is built as a standalone module, designed to be integrated later into
+WeekLift, a separate product (see `SCOPE_OF_WORK.md` §11).
+
 Full build history and every scoring-rule decision (with the trade-offs
 considered, not just the final call) is in `DECISIONS_LOG.md`. This README
 is the current-state reference; that file is the "why we got here."
@@ -22,7 +25,7 @@ is the current-state reference; that file is the "why we got here."
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest                          # 153 tests, all external I/O mocked
+pytest                          # 176 tests, all external I/O mocked
 python -m page_health https://example.com
 ```
 
@@ -135,9 +138,8 @@ anything.
 
 **If GSC is unavailable** (no credentials, no site URL, auth failure, API
 failure) — the **entire 15-point component** rescales to `0/0`, not scored
-0/15. This is the default state for every page scored before WeekLift has
-paying users (§11) — not a rare edge case, the common case for this
-component's entire pre-integration life.
+0/15. This is the normal state whenever Search Console credentials are not
+configured, not a rare edge case.
 
 ---
 
@@ -274,10 +276,9 @@ page-health-score/
 │   ├── score.py            # orchestrates everything, builds the ranked fix list
 │   ├── cli.py               # argument parsing / output formatting
 │   └── __main__.py          # enables `python -m page_health <url>`
-├── tests/unit/               # 153 tests, all external I/O mocked -- no test makes a real network call
+├── tests/unit/               # 176 tests, all external I/O mocked -- no test makes a real network call
 ├── SCOPE_OF_WORK.md          # authoritative scope, living document (§9 out-of-scope, §10 tunables, §11 integration notes)
-├── DECISIONS_LOG.md           # every sign-off decision, with the options considered and why
-└── BUILD_ROADMAP.md           # the day-by-day build plan this project followed
+└── DECISIONS_LOG.md           # every scoring decision, with the options considered and why
 ```
 
 Every scoring function is pure (no I/O) and takes already-fetched data as
@@ -295,3 +296,12 @@ fingerprinting. No integration with WeekLift. No auth, multi-tenancy, or
 user accounts for this tool itself (GSC's service-account credential is the
 operator's own, not a tool-level auth system). No production deployment,
 monitoring, or scheduling.
+
+## How this was built
+
+Built in six days (August 4–10, 2026) with an AI coding assistant as a pair
+programmer. Each scoring rule was proposed with alternatives and approved
+before it was implemented, and every change after the initial scaffold went
+through a pull request.
+`DECISIONS_LOG.md` records each decision, the options considered and the
+reasoning, including the mistakes caught in the final audit.
