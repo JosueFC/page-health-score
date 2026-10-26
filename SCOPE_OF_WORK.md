@@ -1,6 +1,6 @@
 # Page Health Score — Scope of Work
 
-**Status:** v1 scope, pre-build. Standalone project, not yet integrated with WeekLift.
+**Status:** v1 built (August 2026). This was the scope document written before the build; `README.md` describes the current state. Standalone project, not yet integrated with WeekLift.
 **Repo:** New, separate from `weeklift` (see rationale below).
 
 ---
